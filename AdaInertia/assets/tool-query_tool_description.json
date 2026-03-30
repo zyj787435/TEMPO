@@ -1,0 +1,53 @@
+{
+  "loadPaperNet": {
+    "description": "Load the paper citation network (PaperNet) into memory. Must be called before using paperNodeCheck, paperEdgeCheck, or neighbourCheck on PaperNet.",
+    "args": []
+  },
+  "loadAuthorNet": {
+    "description": "Load the author collaboration network (AuthorNet) into memory. Must be called before using authorNodeCheck, authorEdgeCheck, or neighbourCheck on AuthorNet.",
+    "args": []
+  },
+  "neighbourCheck": {
+    "description": "Get the list of neighbors of a node in a graph (co-authors of an author, or cited-by papers of a paper).",
+    "args": [
+      {"arg_name": "graph", "type": "str", "description": "The graph to query: 'PaperNet' or 'AuthorNet'"},
+      {"arg_name": "node", "type": "str", "description": "The node name (author name or paper title)"}
+    ]
+  },
+  "paperNodeCheck": {
+    "description": "Get metadata for a paper node: authors, year, venue, n_citation, keywords, doc_type.",
+    "args": [
+      {"arg_name": "node", "type": "str", "description": "The paper title to look up"}
+    ]
+  },
+  "authorNodeCheck": {
+    "description": "Get metadata for an author node: list of collaborative papers with co-authors.",
+    "args": [
+      {"arg_name": "node", "type": "str", "description": "The author name to look up"}
+    ]
+  },
+  "authorEdgeCheck": {
+    "description": "Get papers co-authored by two specific authors.",
+    "args": [
+      {"arg_name": "node1", "type": "str", "description": "First author name"},
+      {"arg_name": "node2", "type": "str", "description": "Second author name"}
+    ]
+  },
+  "paperEdgeCheck": {
+    "description": "Check the relationship (shared authors, citations) between two papers.",
+    "args": [
+      {"arg_name": "node1", "type": "str", "description": "First paper title"},
+      {"arg_name": "node2", "type": "str", "description": "Second paper title"}
+    ]
+  },
+  "check_valid_actions": {
+    "description": "List all valid actions available in the current environment state.",
+    "args": []
+  },
+  "finish": {
+    "description": "Submit the final answer to complete the task.",
+    "args": [
+      {"arg_name": "answer", "type": "any", "description": "The final answer (number, string, or list)"}
+    ]
+  }
+}

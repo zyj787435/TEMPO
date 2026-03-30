@@ -1,0 +1,13 @@
+{
+  "tool_set_message": [
+    {"name": "loadPaperNet", "description": "Load the paper citation network (PaperNet). Must be called before using paperNodeCheck or paperEdgeCheck."},
+    {"name": "loadAuthorNet", "description": "Load the author collaboration network (AuthorNet). Must be called before using authorNodeCheck, authorEdgeCheck, or neighbourCheck on AuthorNet."},
+    {"name": "neighbourCheck", "description": "Get the list of neighbors of a node in a graph. Args: graph (str: 'PaperNet' or 'AuthorNet'), node (str)."},
+    {"name": "paperNodeCheck", "description": "Get metadata for a paper node: authors, year, venue, n_citation, keywords. Args: node (str: paper title)."},
+    {"name": "authorNodeCheck", "description": "Get metadata for an author node: co-authored papers. Args: node (str: author name)."},
+    {"name": "authorEdgeCheck", "description": "Get papers co-authored by two authors. Args: node1 (str), node2 (str)."},
+    {"name": "paperEdgeCheck", "description": "Check the relationship between two papers. Args: node1 (str), node2 (str)."},
+    {"name": "check_valid_actions", "description": "List all valid actions available in the current environment."},
+    {"name": "finish", "description": "Submit the final answer. Args: answer (str or int or list)."}
+  ]
+}

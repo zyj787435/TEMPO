@@ -1,0 +1,391 @@
+###############################################################################
+# AdaInertia — Unified Evaluation Configuration
+#
+# Usage:
+# python agentboard/eval_main.py \
+#    --cfg-path eval_configs/main_results_all_tasks.yaml \
+#    --tasks scienceworld \
+#    --model DeepSeekChat \
+#    --log_path ${PROJECT_PATH}/results/my_run
+#
+# Switch agent:   change agent.name  (ReactBaselineAgent / ReactInertiaAgent)
+# Switch task:    change --tasks     (alfworld / scienceworld / tool-query / ...)
+# Switch model:   change --model     (DeepSeekChat / Qwen25-72B / GPT4oMini / ...)
+#
+# When agent.name = ReactInertiaAgent, the inertia + RL fields below are used.
+# When agent.name = ReactBaselineAgent, they are ignored automatically.
+###############################################################################
+
+run:
+  max_num_steps: 50
+  num_exam: 134         # alfworld=134, scienceworld=90 (overridden per-task below)
+  wandb: false
+  project_name: adainertia-eval
+  baseline_dir: data/baseline_results
+  log_path: ${PROJECT_PATH}/results/default_run
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent Configuration
+#   name: ReactBaselineAgent   → pure ReAct baseline (no inertia)
+#   name: ReactInertiaAgent    → AdaInertia with RL meta-controller
+# ─────────────────────────────────────────────────────────────────────────────
+agent:
+  name: ReactInertiaAgent
+  memory_size: 25
+  need_goal: true
+  use_parser: true
+  max_think_iters: 3
+  max_steps: 50
+  debug: false
+  record_mod: true
+
+  # ── Inertia parameters (only used when name = ReactInertiaAgent) ──
+  use_inertia: true
+  inertia_threshold: 0.2
+  inertia_alpha: 0.5
+  inertia_k: 2
+  inertia_max: 1
+  inertia_fallback_hint: true
+
+  # ── DQN / RL meta-controller (AdaInertia v3, only for *_dqn task types) ──
+  # use_rl_update: true         # enable online DQN training
+  # reward_asymmetric: true     # asymmetric reward function
+  # use_safety_gating: true     # force A0 on error-loop detection
+  # use_pdg: true               # use progress-delta gating
+  # disable_safety_gating: false
+  # disable_pdg: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Backends  (select with --model)
+# ─────────────────────────────────────────────────────────────────────────────
+llm:
+  # ── DeepSeek family ──
+  DeepSeekChat:
+    name: api
+    engine: deepseek-chat
+    api_base: https://api.deepseek.com/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 64000
+    dtype: float32
+    use_parser: true
+
+  # Alias used in RL experiments (same endpoint as DeepSeekChat)
+  DeepSeekV3:
+    name: api
+    engine: deepseek-chat
+    api_base: https://api.deepseek.com/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 64000
+    dtype: float32
+    use_parser: true
+
+  DeepSeek:
+    name: api
+    engine: deepseek-chat
+    api_base: https://api.deepseek.com/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 65536
+    dtype: float32
+    use_parser: true
+
+  # ── Qwen family (SiliconFlow) ──
+  Qwen25-72B:
+    name: api
+    engine: Qwen/Qwen2.5-72B-Instruct
+    api_base: https://api.siliconflow.cn/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 32768
+    dtype: float32
+    use_parser: true
+
+  # Alias used in early experiments (same model, larger context window)
+  Qwen72B:
+    name: api
+    engine: Qwen/Qwen2.5-72B-Instruct
+    api_base: https://api.siliconflow.cn/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 128000
+    dtype: float32
+    use_parser: true
+
+  # Short alias used in ablation experiments
+  Qwen:
+    name: api
+    engine: Qwen/Qwen2.5-72B-Instruct
+    api_base: https://api.siliconflow.cn/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 32768
+    dtype: float32
+    use_parser: true
+
+  # ── GPT family ──
+  gpt-4o-mini:
+    name: gpt
+    engine: gpt-4o-mini
+    max_retry_iters: 15
+    retry_delays: 20
+    stop: "\n\n"
+    temperature: 0.0
+    top_p: 1
+    use_azure: false
+    use_parser: false
+    context_length: 128000
+
+  gpt-4:
+    name: gpt_azure
+    engine: gpt-4
+    max_retry_iters: 15
+    retry_delays: 20
+    stop: "\n\n"
+    temperature: 0.0
+    top_p: 1
+    use_azure: true
+    use_parser: false
+    context_length: 8192
+
+  text-davinci-003:
+    name: gpt_azure
+    engine: text-davinci-003
+    max_retry_iters: 15
+    retry_delays: 20
+    stop: "\n\n"
+    temperature: 0.0
+    top_p: 1
+    use_azure: true
+    use_parser: false
+    context_length: 4096
+
+  # ── Claude family ──
+  Claude-3-5-Sonnet:
+    name: gpt
+    engine: claude-3-5-sonnet-20241022
+    max_retry_iters: 15
+    retry_delays: 20
+    stop:
+    - " "
+    temperature: 0.0
+    top_p: 1
+    use_azure: false
+    use_parser: true
+    context_length: 200000
+
+  # ── Llama family ──
+  Llama33-70B:
+    name: api
+    engine: llama-3-3-70b-instruct
+    api_base: https://api.laozhang.ai/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 131072
+    dtype: float32
+    use_parser: true
+
+  Llama8B:
+    name: api
+    engine: llama-3-1-8b-instruct
+    api_base: https://api.laozhang.ai/v1
+    api_key: ${OPENAI_API_KEY}
+    max_tokens: 4096
+    temperature: 0.0
+    top_p: 1
+    stop:
+    context_length: 128000
+    dtype: float32
+    use_parser: true
+
+  # ── Local / vLLM models ──
+  Meta-Llama-3.1-8B-Instruct:
+    name: api
+    engine: Meta-Llama-3.1-8B-Instruct
+    api_base: http://localhost:8001/v1
+    context_length: 16384
+    dtype: float32
+    max_tokens: 4096
+    stop: null
+    temperature: 0
+    top_p: 1
+    use_parser: true
+
+  Qwen-2.5-7b-instruct:
+    name: api
+    engine: Qwen-2.5-7B-Instruct
+    api_base: http://localhost:8000/v1
+    api_key: ${OPENAI_API_KEY}
+    context_length: 16384
+    dtype: float32
+    max_tokens: 4096
+    ngpu: 4
+    stop:
+    - "Observation:"
+    - Observation
+    temperature: 0
+    top_p: 1
+    use_parser: true
+
+  llama2-70b:
+    name: vllm
+    engine: meta-llama/Llama-2-70b-chat-hf
+    context_length: 4096
+    dtype: float16
+    max_tokens: 100
+    ngpu: 4
+    stop: null
+    temperature: 0.0
+    top_p: 1
+    use_parser: true
+
+  llama2-13b:
+    name: vllm
+    engine: /model_download/Llama-2-13b-chat-hf
+    context_length: 4096
+    dtype: float16
+    max_tokens: 100
+    ngpu: 2
+    stop: null
+    temperature: 0.0
+    top_p: 1
+    use_parser: true
+
+  mistral-7b:
+    name: vllm
+    engine: mistralai/Mistral-7B-Instruct-v0.2
+    context_length: 32768
+    dtype: float16
+    max_tokens: 100
+    ngpu: 2
+    stop: null
+    temperature: 0.0
+    top_p: 1
+    use_parser: true
+
+  codellama-13b:
+    name: vllm
+    engine: codellama/CodeLlama-13b-Instruct-hf
+    context_length: 16384
+    dtype: float32
+    max_tokens: 100
+    ngpu: 4
+    stop: null
+    temperature: 0
+    top_p: 1
+    use_parser: true
+
+  codellama-34b:
+    name: vllm
+    engine: codellama/CodeLlama-34b-Instruct-hf
+    context_length: 16384
+    dtype: float32
+    max_tokens: 100
+    ngpu: 4
+    stop: null
+    temperature: 0
+    top_p: 1
+    use_parser: true
+
+  deepseek-67b:
+    name: vllm
+    engine: deepseek-ai/deepseek-llm-67b-chat
+    context_length: 4096
+    dtype: float16
+    max_tokens: 100
+    ngpu: 4
+    stop: null
+    temperature: 0
+    top_p: 1
+    use_parser: true
+
+  lemur-70b:
+    name: vllm
+    engine: OpenLemur/lemur-70b-chat-v1
+    context_length: 4096
+    dtype: float16
+    max_tokens: 100
+    ngpu: 4
+    stop: null
+    temperature: 0.0
+    top_p: 1
+    use_parser: true
+
+  vicuna-13b-16k:
+    name: vllm
+    engine: lmsys/vicuna-13b-v1.5-16k
+    context_length: 16384
+    dtype: float16
+    max_tokens: 100
+    ngpu: 2
+    stop: null
+    temperature: 0.0
+    top_p: 1
+    use_parser: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Environment Configuration  (select with --tasks)
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  # ── AlfWorld ──────────────────────────────────────────────────────────────
+  alfworld:
+    name: alfworld
+    base_config: ${PROJECT_PATH}/agentboard/environment/alfworld/base_config.yaml
+    split: eval_out_of_distribution
+    batch_size: 1
+    label_path: ${PROJECT_PATH}/data/alfworld/test.jsonl
+    check_inventory: true
+    check_actions: check valid actions
+    num_exam: 134
+    # ── Per-agent prompt paths (auto-selected based on agent.name) ──
+    prompts:
+      ReactBaselineAgent: ${PROJECT_PATH}/agentboard/prompts/ReactBaselineAgent/alfworld_react.json
+      ReactInertiaAgent: ${PROJECT_PATH}/agentboard/prompts/ReactInertiaAgent/alfworld_react.json
+
+  # ── ScienceWorld ──────────────────────────────────────────────────────────
+  scienceworld:
+    name: scienceworld
+    envStepLimit: 30
+    seed: 0
+    simplefied: false
+    check_inventory: true
+    check_actions: check valid actions
+    label_path: ${PROJECT_PATH}/data/scienceworld/test.jsonl
+    num_exam: 90
+    # ── Per-agent prompt paths (auto-selected based on agent.name) ──
+    prompts:
+      ReactBaselineAgent: ${PROJECT_PATH}/agentboard/prompts/ReactBaselineAgent/scienceworld_base.json
+      ReactInertiaAgent: ${PROJECT_PATH}/agentboard/prompts/ReactInertiaAgent/scienceworld_base.json
+
+  # ── Tool-Query ────────────────────────────────────────────────────────────
+  tool-query:
+    name: tool-query
+    dataset_dir: ${PROJECT_PATH}/agentboard/data/data
+    init_prompt_path: ${PROJECT_PATH}/agentboard/prompts
+    result_dir: ${PROJECT_PATH}/results/tool_query
+    check_actions: check_valid_actions
+    seed: 1234
+    num_exam: 20
+

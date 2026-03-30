@@ -1,0 +1,92 @@
+{
+    "TextGeneration": {
+        "description": "Generating text is the task of generating new text given another text. These models can, for example, fill in incomplete text or paraphrase.",
+        "model": "HuggingFaceTB/SmolLM3-3B",
+        "use_cases": [
+            "Creative writing and story generation",
+            "Text completion and continuation",
+            "Dialogue and conversation generation",
+            "General text generation tasks"
+        ],
+        "examples": [
+            "Write a short story about a robot learning to paint",
+            "Complete this sentence: The future of AI is",
+            "Generate a creative product description for a smart watch"
+        ]
+    },
+    "Summarization": {
+        "description": "Summarization is the task of producing a shorter version of a document while preserving its important information. Some models can extract text from the original input, while other models can generate entirely new text.",
+        "model": "Falconsai/medical_summarization",
+        "use_cases": [
+            "Summarizing long articles or documents",
+            "Creating executive summaries",
+            "Extracting key points from text",
+            "Condensing information for quick reading"
+        ],
+        "examples": [
+            "Summarize this article about climate change: [long text]",
+            "Give me a brief summary of this research paper",
+            "Condense this news article into 2-3 sentences"
+        ]
+    },
+    "QuestionAnswering": {
+        "description": "Question Answering models can retrieve the answer to a question from a given text, which is useful for searching for an answer in a document. Some question answering models can generate answers without context!",
+        "model": "deepset/roberta-base-squad2",
+        "use_cases": [
+            "Extracting specific information from documents",
+            "Building chatbots that answer questions based on context",
+            "Information retrieval from knowledge bases",
+            "FAQ systems"
+        ],
+        "examples": [
+            "Question: What is the capital of France? Context: Paris is the capital of France...",
+            "Find the answer to 'When was the company founded?' in this document",
+            "Extract the main character's name from this story"
+        ]
+    },
+    "Translation": {
+        "description": "Translation is the task of converting text from one language to another.",
+        "model": "facebook/mbart-large-50-many-to-many-mmt",
+        "use_cases": [
+            "Translating text between 50+ languages",
+            "Multilingual communication",
+            "Localizing content",
+            "Language learning assistance"
+        ],
+        "examples": [
+            "Translate 'Hello, how are you?' from English to Chinese",
+            "Convert this Spanish text to English",
+            "Translate this document from Russian to French"
+        ]
+    },
+    "TextToImage": {
+        "description": "Text-to-image is the task of generating images from input text. These pipelines can also be used to modify and edit images based on text prompts.",
+        "model": "black-forest-labs/FLUX.1-schnell",
+        "use_cases": [
+            "Creating artwork from text descriptions",
+            "Generating illustrations for stories",
+            "Creating product mockups and designs",
+            "Visual content creation for marketing"
+        ],
+        "examples": [
+            "Generate an image of an astronaut riding a horse",
+            "Create a picture of a sunset over the ocean",
+            "Draw a futuristic cityscape with flying cars"
+        ]
+    },
+    "FeatureExtraction": {
+        "description": "Feature extraction is the task of extracting features learnt in a model. This converts text into numerical vectors (embeddings) that capture semantic meaning.",
+        "model": "facebook/bart-base",
+        "use_cases": [
+            "Computing text similarity",
+            "Semantic search and information retrieval",
+            "Text clustering and categorization",
+            "Building recommendation systems"
+        ],
+        "examples": [
+            "Convert this text to a vector for similarity comparison",
+            "Extract semantic features from this sentence",
+            "Generate embeddings for search indexing"
+        ]
+    }
+}
