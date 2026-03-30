@@ -1,0 +1,85 @@
+{
+  "go": {
+    "description": "Navigate to a receptacle location",
+    "args": [
+      {"arg_name": "recep", "type": "str", "description": "The receptacle or location to go to"}
+    ]
+  },
+  "take": {
+    "description": "Take an object from a receptacle",
+    "args": [
+      {"arg_name": "obj", "type": "str", "description": "The object to take"},
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to take the object from"}
+    ]
+  },
+  "put": {
+    "description": "Put an object in or on a receptacle",
+    "args": [
+      {"arg_name": "obj", "type": "str", "description": "The object to put"},
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to put the object in or on"}
+    ]
+  },
+  "open": {
+    "description": "Open a receptacle",
+    "args": [
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to open"}
+    ]
+  },
+  "close": {
+    "description": "Close a receptacle",
+    "args": [
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to close"}
+    ]
+  },
+  "toggle": {
+    "description": "Toggle a device on or off",
+    "args": [
+      {"arg_name": "target", "type": "str", "description": "The target device to toggle"}
+    ]
+  },
+  "clean": {
+    "description": "Clean an object with a receptacle",
+    "args": [
+      {"arg_name": "obj", "type": "str", "description": "The object to clean"},
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to clean with (e.g. sinkbasin)"}
+    ]
+  },
+  "cool": {
+    "description": "Cool an object with a receptacle",
+    "args": [
+      {"arg_name": "obj", "type": "str", "description": "The object to cool"},
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to cool with (e.g. fridge)"}
+    ]
+  },
+  "heat": {
+    "description": "Heat an object with a receptacle",
+    "args": [
+      {"arg_name": "obj", "type": "str", "description": "The object to heat"},
+      {"arg_name": "recep", "type": "str", "description": "The receptacle to heat with (e.g. microwave)"}
+    ]
+  },
+  "examine": {
+    "description": "Examine a target object or receptacle",
+    "args": [
+      {"arg_name": "target", "type": "str", "description": "The target to examine"}
+    ]
+  },
+  "use": {
+    "description": "Use a target object or device",
+    "args": [
+      {"arg_name": "target", "type": "str", "description": "The target to use"}
+    ]
+  },
+  "inventory": {
+    "description": "Check current inventory",
+    "args": []
+  },
+  "look": {
+    "description": "Look around the current location",
+    "args": []
+  },
+  "check": {
+    "description": "Check valid actions",
+    "args": []
+  }
+}

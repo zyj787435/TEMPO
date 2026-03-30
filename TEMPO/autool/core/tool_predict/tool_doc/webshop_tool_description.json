@@ -1,0 +1,54 @@
+{
+  "search": {
+    "tool": "search",
+    "tool_desc": "Search for products using a keyword query. Returns a list of matching products with names and prices.",
+    "args": [
+      {"arg_name": "query", "arg_type": "str", "arg_desc": "The search keywords describing the desired product"}
+    ],
+    "returns": [
+      {"arg_name": "results", "arg_type": "list", "arg_desc": "Numbered list of products with names and prices"},
+      {"arg_name": "count", "arg_type": "int", "arg_desc": "Number of results returned"}
+    ]
+  },
+  "click_product": {
+    "tool": "click_product",
+    "tool_desc": "Click on product N from search results to view its details, options, and price. N is 1-indexed.",
+    "args": [
+      {"arg_name": "N", "arg_type": "int", "arg_desc": "Product index from search results (1-indexed)"}
+    ],
+    "returns": [
+      {"arg_name": "product_name", "arg_type": "str", "arg_desc": "Full product name"},
+      {"arg_name": "price", "arg_type": "str", "arg_desc": "Product price"},
+      {"arg_name": "description", "arg_type": "str", "arg_desc": "Product description"},
+      {"arg_name": "options", "arg_type": "dict", "arg_desc": "Available customization options (size, color, etc.)"}
+    ]
+  },
+  "click_option": {
+    "tool": "click_option",
+    "tool_desc": "Select a product option value (e.g., a specific size or color) on the current product page.",
+    "args": [
+      {"arg_name": "option_value", "arg_type": "str", "arg_desc": "The option value to select (e.g., 'Large', 'Red', 'XL')"}
+    ],
+    "returns": [
+      {"arg_name": "selected", "arg_type": "str", "arg_desc": "Confirmation of selected option"},
+      {"arg_name": "page", "arg_type": "str", "arg_desc": "Updated product page with selection highlighted"}
+    ]
+  },
+  "click_buy_now": {
+    "tool": "click_buy_now",
+    "tool_desc": "Purchase the currently viewed product with the selected options. Completes the shopping task.",
+    "args": [],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Purchase confirmation"},
+      {"arg_name": "reward", "arg_type": "float", "arg_desc": "Task completion score (0.0-1.0)"}
+    ]
+  },
+  "click_back": {
+    "tool": "click_back",
+    "tool_desc": "Return to the search results page from a product detail page.",
+    "args": [],
+    "returns": [
+      {"arg_name": "results", "arg_type": "list", "arg_desc": "Previous search results"}
+    ]
+  }
+}

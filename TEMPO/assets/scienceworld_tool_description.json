@@ -1,0 +1,228 @@
+{
+  "go_to": {
+    "tool": "go_to",
+    "tool_desc": "Move to a specified location (e.g., kitchen, hallway, outside, greenhouse, foundry, bedroom, bathroom, living room, workshop)",
+    "args": [
+      {"arg_name": "LOC", "arg_type": "str", "arg_desc": "The destination location name"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether the movement succeeded"},
+      {"arg_name": "new_location", "arg_type": "str", "arg_desc": "The new location after moving"}
+    ]
+  },
+  "look_around": {
+    "tool": "look_around",
+    "tool_desc": "Look around the current room to see objects, items, and doors",
+    "args": [],
+    "returns": [
+      {"arg_name": "objects", "arg_type": "list", "arg_desc": "Objects visible in the room"},
+      {"arg_name": "doors", "arg_type": "list", "arg_desc": "Doors and their states"}
+    ]
+  },
+  "look_at": {
+    "tool": "look_at",
+    "tool_desc": "Examine a specific object to get more details",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to examine"}
+    ],
+    "returns": [
+      {"arg_name": "object_description", "arg_type": "str", "arg_desc": "Description of the object"}
+    ]
+  },
+  "look_in": {
+    "tool": "look_in",
+    "tool_desc": "Look inside a container object",
+    "args": [
+      {"arg_name": "OBJ_container", "arg_type": "str", "arg_desc": "The container to look into"}
+    ],
+    "returns": [
+      {"arg_name": "contains", "arg_type": "list", "arg_desc": "Items inside the container"}
+    ]
+  },
+  "pick_up": {
+    "tool": "pick_up",
+    "tool_desc": "Pick up an object and add it to inventory",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to pick up"}
+    ],
+    "returns": [
+      {"arg_name": "picked_object", "arg_type": "str", "arg_desc": "The object picked up"}
+    ]
+  },
+  "put_down": {
+    "tool": "put_down",
+    "tool_desc": "Put down an object from inventory",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to put down"}
+    ],
+    "returns": [
+      {"arg_name": "put_object", "arg_type": "str", "arg_desc": "The object put down"}
+    ]
+  },
+  "open": {
+    "tool": "open",
+    "tool_desc": "Open a container or door",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to open"}
+    ],
+    "returns": [
+      {"arg_name": "new_state", "arg_type": "str", "arg_desc": "The new state after opening"}
+    ]
+  },
+  "close": {
+    "tool": "close",
+    "tool_desc": "Close a container or door",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to close"}
+    ],
+    "returns": [
+      {"arg_name": "new_state", "arg_type": "str", "arg_desc": "The new state after closing"}
+    ]
+  },
+  "activate": {
+    "tool": "activate",
+    "tool_desc": "Activate/turn on a device (e.g., stove, sink, heater)",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The device to activate"}
+    ],
+    "returns": [
+      {"arg_name": "new_state", "arg_type": "str", "arg_desc": "The new state after activation"}
+    ]
+  },
+  "deactivate": {
+    "tool": "deactivate",
+    "tool_desc": "Deactivate/turn off a device",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The device to deactivate"}
+    ],
+    "returns": [
+      {"arg_name": "new_state", "arg_type": "str", "arg_desc": "The new state after deactivation"}
+    ]
+  },
+  "use": {
+    "tool": "use",
+    "tool_desc": "Use a tool/instrument on an object (e.g., use thermometer on substance)",
+    "args": [
+      {"arg_name": "OBJ_tool", "arg_type": "str", "arg_desc": "The tool to use"},
+      {"arg_name": "OBJ_target", "arg_type": "str", "arg_desc": "The target object to use the tool on"}
+    ],
+    "returns": [
+      {"arg_name": "result", "arg_type": "str", "arg_desc": "The result of using the tool"}
+    ]
+  },
+  "move": {
+    "tool": "move",
+    "tool_desc": "Move an object to a destination (e.g., move metal pot to stove)",
+    "args": [
+      {"arg_name": "OBJ_source", "arg_type": "str", "arg_desc": "The object to move"},
+      {"arg_name": "OBJ_target", "arg_type": "str", "arg_desc": "The destination to move the object to"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether the move succeeded"}
+    ]
+  },
+  "pour": {
+    "tool": "pour",
+    "tool_desc": "Pour contents from one container into another",
+    "args": [
+      {"arg_name": "OBJ_from", "arg_type": "str", "arg_desc": "The source container"},
+      {"arg_name": "OBJ_to", "arg_type": "str", "arg_desc": "The target container"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether the pour succeeded"}
+    ]
+  },
+  "dunk": {
+    "tool": "dunk",
+    "tool_desc": "Dunk an object into a liquid",
+    "args": [
+      {"arg_name": "OBJ_container", "arg_type": "str", "arg_desc": "The object to dunk"},
+      {"arg_name": "OBJ_liquid_env", "arg_type": "str", "arg_desc": "The liquid container to dunk into"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether the dunk succeeded"}
+    ]
+  },
+  "mix": {
+    "tool": "mix",
+    "tool_desc": "Mix the contents of a container",
+    "args": [
+      {"arg_name": "OBJ_container", "arg_type": "str", "arg_desc": "The container to mix"}
+    ],
+    "returns": [
+      {"arg_name": "result", "arg_type": "str", "arg_desc": "The result of mixing"}
+    ]
+  },
+  "eat": {
+    "tool": "eat",
+    "tool_desc": "Eat an edible object",
+    "args": [
+      {"arg_name": "OBJ_edible", "arg_type": "str", "arg_desc": "The object to eat"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether eating succeeded"}
+    ]
+  },
+  "flush": {
+    "tool": "flush",
+    "tool_desc": "Flush a flushable object",
+    "args": [
+      {"arg_name": "OBJ_flushable", "arg_type": "str", "arg_desc": "The object to flush"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether flushing succeeded"}
+    ]
+  },
+  "focus_on": {
+    "tool": "focus_on",
+    "tool_desc": "Focus on an object (e.g., focus on a specific animal or substance)",
+    "args": [
+      {"arg_name": "OBJ", "arg_type": "str", "arg_desc": "The object to focus on"}
+    ],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Whether focus succeeded"}
+    ]
+  },
+  "read": {
+    "tool": "read",
+    "tool_desc": "Read a readable object",
+    "args": [
+      {"arg_name": "OBJ_readable", "arg_type": "str", "arg_desc": "The object to read"}
+    ],
+    "returns": [
+      {"arg_name": "content", "arg_type": "str", "arg_desc": "The content read"}
+    ]
+  },
+  "inventory": {
+    "tool": "inventory",
+    "tool_desc": "Check current inventory",
+    "args": [],
+    "returns": [
+      {"arg_name": "items", "arg_type": "list", "arg_desc": "Items in inventory"}
+    ]
+  },
+  "check": {
+    "tool": "check",
+    "tool_desc": "Check valid actions available",
+    "args": [],
+    "returns": [
+      {"arg_name": "valid_actions", "arg_type": "list", "arg_desc": "List of valid actions"}
+    ]
+  },
+  "wait": {
+    "tool": "wait",
+    "tool_desc": "Wait for some time to pass",
+    "args": [],
+    "returns": [
+      {"arg_name": "status", "arg_type": "str", "arg_desc": "Result of waiting"}
+    ]
+  },
+  "task": {
+    "tool": "task",
+    "tool_desc": "Display the current task description",
+    "args": [],
+    "returns": [
+      {"arg_name": "task_desc", "arg_type": "str", "arg_desc": "The current task description"}
+    ]
+  }
+}
