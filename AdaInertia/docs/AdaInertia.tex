@@ -1,0 +1,632 @@
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{float}
+\usepackage{makecell} 
+
+\usepackage{graphicx}
+\usepackage[ruled,linesnumbered]{algorithm2e}
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\lstdefinestyle{lncs}{
+    language=Python,
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\bfseries\color{blue!70!black},
+    commentstyle=\itshape\color{gray},
+    stringstyle=\color{orange!90!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    backgroundcolor=\color{white},
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    frame=lines,
+    framerule=0.5pt,
+    rulecolor=\color{black!30},
+    tabsize=4,
+    captionpos=b,
+    breaklines=true,
+    xleftmargin=15pt,
+    framexleftmargin=15pt
+}
+\title{AdaInertia: Dynamic Tool Usage Inertia Control via Deep Q-Learning for Efficient LLM Agent Reasoning}
+\titlerunning{AdaInertia: Dynamic Tool Usage Inertia Control}
+\author{Anonymous Author(s)}
+
+\authorrunning{Anonymous Author(s)}
+\institute{Paper under Double-Blind Review}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+ReAct-based Large Language Model (LLM) agents experience significant inefficiencies due to redundant LLM calls for predictable reasoning steps. Although a static inertia mechanism has been introduced to reuse actions, its fixed threshold cannot adapt to dynamic task difficulties. To address this limitation, we propose \textbf{AdaInertia}, modeling tool usage inertia control as a reinforcement learning problem for the first time. We integrate a lightweight Deep Q-Network (DQN) meta-controller to adaptively route decisions among deep reasoning, conservative inertia, and hint-enhanced fallback based on real-time task progress and token efficiency. Experiments demonstrate that AdaInertia mitigates the standard performance-cost trade-off, reducing token consumption by up to 38.3\% while improving success rates by 9.6\%, thereby recovering performance where static methods fail. Furthermore, it achieves up to 2.4x inference acceleration with negligible overhead (0.1\% of LLM latency) and develops heterogeneous routing strategies tailored to specific LLM capabilities.
+\keywords{LLM Agents \and Reinforcement Learning \and Tool Usage \and Efficiency Optimization}
+\end{abstract}
+
+\section{Introduction}
+Large Language Models (LLMs) such as GPT-4 \cite{gpt4} and Llama 2 \cite{llama2} have become foundational for constructing autonomous agents \cite{autogpt,agentbench} due to their advanced reasoning capabilities. Frameworks like ReAct \cite{react} and Reflexion \cite{reflexion} navigate tasks through an alternating "thought-action-observation" cycle for complex sequential decision-making. However, this paradigm introduces a significant efficiency bottleneck: agents must initiate an LLM inference call at every decision step. As task chains lengthen, compounding inference costs (token consumption) and response latency restrict the large-scale deployment of LLM agents in domains such as web navigation \cite{mind2web} and extensive API collaboration \cite{toolllm}.
+\begin{figure}[t]
+\vspace{-3mm}
+	\centering
+	\includegraphics[width=0.9\textwidth]{images/Motivation.pdf}
+ 	\caption{Motivation. Static thresholds (left) face an inherent trade-off between over-querying and over-reusing. AdaInertia (right) dynamically routes each step via an RL meta-controller, adapting the inertia threshold to task difficulty.}
+\end{figure}
+To mitigate these bottlenecks, prior work explores various optimization strategies. Methods like FireAct \cite{fireact} focus on model lightweighting via task-specific fine-tuning to distill reasoning behaviors into smaller models. Alternatively, frameworks such as SwiftSage \cite{swiftsage} adopt dual-system cognitive routing, activating a larger model only during bottlenecks. In tool-calling contexts, Gorilla \cite{gorilla} and Chameleon \cite{chameleon} improve API retrieval and composition. Notably, the AutoTool framework \cite{autotool} introduces the concept of "Tool Usage Inertia." AutoTool constructs a static graph model based on historical execution trajectories; when the similarity between the current state and a historical state exceeds a fixed threshold, it directly reuses the historical action, thereby successfully bypassing LLM calls and significantly reducing inference costs.
+
+However, static thresholds introduce significant performance instability. For instance, in our AlfWorld experiments ($\theta=0.1$), Qwen2.5-72B's success rate dropped by 28.9\%, whereas DeepSeek-V3.2's improved. This discrepancy highlights a critical lack of meta-cognitive awareness regarding dynamic task difficulty and model-specific capacities. Optimal compute allocation necessitates aggressive action reuse for repetitive steps, yet requires deep reasoning for critical transitions. Consequently, relying on fixed thresholds leads to a sub-optimal compromise between reasoning stagnation and computational waste.
+
+Since threshold selection is a sequential decision problem with delayed rewards, we formulate it using reinforcement learning (RL) rather than heuristic rules. We propose \textbf{AdaInertia}, a dynamic framework using a lightweight DQN \cite{dqn} meta-controller to adaptively route decisions among forced reasoning ($A_0$), conservative inertia ($A_1$), and hint-enhanced fallback ($A_2$). By monitoring real-time progress and efficiency, the agent strategically allocates compute during bottlenecks and maximizes action reuse for predictable steps.
+
+Our main contributions are:
+\begin{itemize}
+    \item We first formulate tool inertia control as an RL problem, proposing a dynamic routing mechanism that adjusts reasoning depth to reduce costs and recover performance where static methods fail.
+    \item We design efficiency-aware state representations and asymmetric reward mechanisms to stabilize the RL policy across varying task difficulties and LLMs.
+    \item We demonstrate through extensive evaluations that AdaInertia mitigates the performance-cost zero-sum game, reducing token consumption by up to 38.3\% and improving success rates by up to 9.6\%, while achieving a 2.4x inference acceleration.
+    \item We reveal the emergence of model-aware routing strategies: the controller learns to directly bypass hallucination-prone models and utilize hint-enhancement for instruction-following models.
+\end{itemize}
+
+\section{Related Work}
+\subsection{Evolution of LLM-based Autonomous Agents}
+Autonomous agent research has evolved from simple prompt engineering to complex decision systems. Early studies like ReAct and Reflexion established foundational frameworks. Recent reasoning-intensive models, such as DeepSeek-R1 \cite{deepseekr1} and Llama 3 \cite{llama3}, have further enhanced agents' logical depth. Consequently, research has shifted toward the stability and autonomy of long-horizon tasks. SWE-agent \cite{sweagent} and OpenHands \cite{openhands} demonstrate the exceptional potential of agents in complex codebase repairs, while Devin \cite{devin} verifies the feasibility of AI software engineers through end-to-end system integration. Meanwhile, benchmarks like AgentBoard \cite{agentboard} and GAIA-v2 \cite{gaia} introduce dynamic evaluations for multi-step trajectories. However, these works often assume unlimited compute resources, ignoring practical constraints of low-overhead inference.
+
+\subsection{Advancements in Tool Selection and Usage Optimization}
+Tool-calling is essential for expanding LLM agent capabilities. Methods ranging from Toolformer \cite{toolformer} to Gorilla \cite{gorilla}continuously improve API comprehension. As API scales expand, optimizing tool selection efficiency becomes a primary challenge. ToolNet \cite{toolnet} introduces graph structures for API dependencies, and LLMCompiler \cite{llmcompiler} utilizes task parallelization to reduce latency. AutoTool \cite{autotool} captures statistical "inertia" in tool calling, pruning redundant reasoning steps via static probability graphs. However, AutoTool's static weights can cause success rate fluctuations due to rigid decision-making in dynamic, nonlinear environments. AdaInertia leverages inertia graphs but introduces real-time adaptive control via reinforcement learning to dynamically respond to environmental feedback.
+
+\subsection{Reinforcement Learning for Agentic Meta-Decision}
+Reinforcement Learning (RL) is crucial for optimizing agent strategies. Recent advancements, from PPO to GRPO \cite{deepseekmath}, have improved agent reasoning quality. In decision regulation, the focus is shifting from generating specific actions to "Meta-Control".
+\begin{itemize}
+    \item \textbf{RL for Model Routing}: Frameworks like RouteLLM \cite{routellm} and Hybrid-LLM \cite{hybrid} explore dynamic switching between models of different scales to balance cost and performance.
+    \item \textbf{RL and State Abstraction}: Because training RL directly in text space struggles to converge, methods like Agent-FLAN \cite{agentflan}utilize neuro-symbolic abstraction to handle complex environmental features.
+    \item \textbf{Cost-Aware Reward Shaping}: Cost-aware reward designs explicitly penalize token consumption to force optimal compute budget allocation. AdaInertia adopts this cost-aware philosophy , demonstrating robustness in long-range scheduling tasks.
+\end{itemize}
+\section{Methodology}
+\begin{figure}[htb]
+\vspace{-6mm}
+	\centering
+    \small
+	\includegraphics[width=0.95\textwidth]{images/Method2.pdf}
+    \caption{An overview of AdaInertia framework}
+\vspace{-2mm}
+\end{figure}
+The AdaInertia framework dynamically optimizes the reasoning overhead of LLM agents via a hierarchical decision architecture. This section outlines the static inertia baseline and details the MDP formulation of our Meta-Control Layer.
+
+\subsection{Preliminaries: AutoTool and Static Inertia}
+\textbf{AutoTool} \cite{autotool} proposed a heuristic scheme based on "Tool Usage Inertia." It assumes that sequences of tool calls follow statistical patterns during task execution. A directed graph $G = (V, E)$ can be constructed using historical success trajectories, where nodes are tools and edge weights represent the \textbf{confidence score} for predicting the next action through the inertia graph. During execution, AutoTool utilizes a fixed \textbf{inertia threshold} $\theta_{inertial}$. For the current step, the system predicts candidate action scores $P$ based on the historical graph model. If $\max(P) > \theta_{inertial}$, the action is deemed highly predictable, allowing the agent to directly reuse the historical tool and bypass the LLM's autoregressive generation. Conversely, the system automatically falls back to ReAct \cite{react} mode, activating the LLM for full reasoning.
+
+However, the fundamental limitation of static $\theta_{inertial}$ is its lack of perception of \textbf{real-time task progress}. The system cannot dynamically adjust subsequent strategies based on historical feedback: it fails to increase the threshold to invoke deep LLM intervention during bottlenecks, or decrease it to accelerate execution when the task progresses smoothly. Furthermore, to prevent a significant decrease in PR, AutoTool limits the proportion of inertia calls to no more than 30\% during code implementation, which also leads to its own limitations. Since AutoTool cannot self-correct based on historical feedback, it often leads the agent into \textbf{Reasoning Stagnation} due to blind trust in inertia (Over-saving) when facing complex states. To maximize task progress, AutoTool explicitly restricts inertia calls and prohibits consecutive reuses \cite{autotool} inherently reflecting the limitations of a static $\theta_{inertial}$. To resolve this, the \textbf{AdaInertia} framework introduces a lightweight reinforcement learning meta-controller that formulates dynamic inertia control as a Markov Decision Process (MDP).
+
+\subsection{MDP Formulation for Meta-Cognitive Routing}
+To achieve adaptive compute scheduling and overcome the rigidity of static methods, we model the reasoning depth selection as a Markov Decision Process (MDP), formally defined as a quadruple $(\mathcal{S}, \mathcal{A}, \mathcal{P}, \mathcal{R})$. This learning-based formulation allows the agent to treat "how much to think" as a strategic choice that yields long-term rewards in terms of both success and efficiency.
+
+\textbf{State Space ($\mathcal{S}$)} is constructed to solve the lack of real-time perception in heuristic systems. In order to optimize the perception of task difficulty and compute urgency, we map the environmental feedback into a normalized feature vector $\mathbf{s}_t = [f_{prog}, f_{iner}, f_{step}, f_{eff}]$. Here, $f_{prog}$ captures task progress to sense proximity to goals, $f_{iner}$ measures the inertia strength between current observations and historical patterns, $f_{step}$ reflects the temporal pressure of the remaining step budget, and $f_{eff}$ monitors real-time token efficiency against a standard baseline. 
+
+\textbf{Action Space ($\mathcal{A}$)} is designed to optimize the compute-performance trade-off through discrete routing levels $a_t \in \{A_0, A_1, A_2\}$. These actions serve as high-level control signals that modulate the underlying inertia threshold $\theta_{inertial}$, ranging from forced deep reasoning to aggressive action bypass.
+
+\textbf{State Transition ($\mathcal{P}$)} describes how environmental interactions update the meta-cognitive state. In order to resolve the uncertainty of long-horizon tasks, the transition function captures how current routing decisions affect the subsequent availability of context and task progress, leading to the next state $\mathbf{s}_{t+1}$.
+
+\textbf{Reward Function ($\mathcal{R}$)} is formulated to guide the RL policy toward an effective balance between success and cost. To optimize the agent's efficiency without sacrificing task completion, we utilize a scalar reward $r_t$ that combines progress-driven gains with cost-aware token penalties, reinforcing actions that achieve success with minimal compute.
+
+\subsection{Execution Flow and Adaptive Routing Logic}
+The operational cycle of AdaInertia follows a structured five-phase evolution of the MDP. This loop ensures that every decision is informed by historical performance and optimized for future efficiency.
+
+\textbf{State Extraction and Progress Perception.} To make an informed routing choice, the system must first reconcile the environmental state with task history. In this phase, the controller calculates the progress delta $\Delta p$ relative to the previous observation. By mapping the raw history $\mathcal{H}$ and current feedback into the feature vector $s_t$, the system constructs a meta-cognitive representation that identifies whether the agent is in a "flow state" (consistent progress) or a "bottleneck state" (stagnation). This perceptual step is critical, as it provides the grounded context needed for cost-aware decision-making.
+
+\textbf{Strategic Routing Decision.} The core intelligence of the framework lies in choosing the optimal reasoning depth for the perceived state. The meta-controller utilizes a Deep Q-Network (DQN) to estimate the value of different routing actions. To prevent the agent from falling into "hallucination loops," a safety gating mechanism is integrated: if the state indicates repetitive failure or an error loop, the system overrides the RL policy and enforces the maximum reasoning depth ($A_0$). Otherwise, the controller selects the action with the highest expected reward, balancing exploration and exploitation via an $\epsilon$-greedy strategy. This ensures that the agent actively explores efficient paths while maintaining a safety net for complex scenarios.
+
+\textbf{Multi-Tiered Strategy Execution.} Once an action is selected, the framework adjusts the execution parameters to match the required cognitive intensity. For \textit{Forced Reasoning} ($A_0$), the threshold is set to a maximal value $\theta_{high}$, compelling the LLM to generate a full "Thought-Action" chain. For \textit{Conservative Inertia} ($A_1$), a moderate threshold $\theta_{mid}$ is used, allowing action reuse only when confidence is high and validated by environmental parameters. For \textit{Aggressive Inertia} ($A_2$), a minimal threshold $\theta_{low}$ is applied, prioritizing speed and utilizing LLMs only for minor parameter adjustments. This tiered approach ensures that expensive compute is reserved exclusively for high-uncertainty states, directly addressing the compute-waste problem.
+
+\textbf{Asymmetric Reward Formulation.} To guide the RL policy toward an effective balance between success and cost, the reward signal must be carefully shaped. We implement an asymmetric reward $r_t$ that heavily weights task completion while providing nuanced incentives for efficiency. The reward is defined as:
+\begin{equation}
+r_t = 
+\begin{cases} 
+R_{success}, & \text{if task is completed} \\
+(\Delta p \cdot \omega) + B_{a_t} - \gamma \cdot C_{token}, & \text{otherwise}
+\end{cases}
+\end{equation}
+where $\omega$ scales progress gains, $C_{token}$ represents the normalized token cost, and $B_{a_t}$ is an \textit{action-specific bias} parameter. By setting $B_{A_2} > B_{A_1} > B_{A_0}$, we provide a "speed premium" that encourages the model to bypass reasoning whenever the perceived risk to task success is low, thus shaping a policy that naturally gravitates towards efficiency.
+
+\textbf{Online Policy Update.} The final phase ensures the system evolves based on its interaction history. The transition tuple $\langle s_t, a_t, r_t, s_{t+1} \rangle$ is stored in an experience replay pool. The meta-controller's parameters $\theta$ are updated by minimizing the temporal difference (TD) error using the Mean Squared Error (MSE) loss:
+\begin{equation}
+\mathcal{L}(\theta) = \mathbb{E} \left[ \left( r_t + \gamma_{RL} \max_{a'} Q(s_{t+1}, a'; \theta^-) - Q(s_t, a_t; \theta) \right)^2 \right]
+\end{equation}
+Through this continuous backpropagation, AdaInertia refines its routing policy, eventually emerging with heterogeneous strategies that are uniquely adapted to the specific capabilities and hallucination traits of the underlying LLM.
+
+\section{Experiment and Analysis}
+\subsection{Experimental Setup}
+\subsubsection{Datasets and Tasks}
+To evaluate AdaInertia's cost-performance trade-offs across varying complexities, we utilize two standard LLM agent benchmarks:
+\begin{itemize}
+    \item \textbf{AlfWorld} \cite{alfworld}: A text-based household environment (134 tasks) featuring high action regularity. Routine operations exhibit strong inertia, whereas object recognition requires precise reasoning, making it ideal for evaluating adaptive tool reuse.
+    \item \textbf{ScienceWorld} \cite{scienceworld}: A complex scientific reasoning benchmark (90 tasks across 10 themes) characterized by large state spaces and non-linear feedback. It requires deeper dynamic reasoning, testing the meta-controller's ability to invoke LLMs at critical bottlenecks and prevent inertia overfitting.
+\end{itemize}
+
+\subsubsection{Implementation Details}
+\begin{itemize}
+    \item \textbf{Baselines}: We compare against ReAct and AutoTool. For AutoTool, we fix the inertia threshold $\theta_{inertial}=0.1$ and the CIPS confidence weight $\alpha=0.5$.
+    \item \textbf{Network and Training Settings}: The DQN utilizes a two-layer MLP (64 hidden dimensions). The experience replay pool capacity is 5,000, optimized via Adam with a learning rate of $1 \times 10^{-4}$.
+    % \item \textbf{Hyperparameters}: Through trail and error, we finally set $\omega=5$, $\gamma=0.9$, $B_{A_2}$, $B_{A_1}$, $B_{A_0}$ are respectively $1.5$, $0.0$ and $-0.3$.
+\end{itemize}
+All LLMs were experimented with using remote API calls. Experiments run on a single NVIDIA RTX 3090.
+
+\subsubsection{Evaluation Metrics}
+Following the AgentBoard \cite{agentboard} framework, we measure performance, cost, and latency using:
+\begin{itemize}
+    \item \textbf{Success Rate (SR)}: The proportion of fully completed tasks, further subdivided into \textbf{Hard SR} and \textbf{Easy SR}.
+    \item \textbf{Progress Rate (PR)}: The ratio of achieved sub-goals to the pre-defined sequence, also subdivided by difficulty.
+    \item \textbf{Tokens}: Total token consumption, including prompt tokens(Token-in) and completion tokens(Token-out).
+    \item \textbf{Token Savings (Savings)}: The relative percentage of token reduction for \textbf{AdaInertia} compared to the vanilla \textbf{ReAct} baseline.
+    \item \textbf{Time}: Program operation time overhead, recording the total time from program start to termination.
+\end{itemize}
+
+\subsection{Main Results}
+% Table \ref{table1} shows the comprehensive performance of each framework.
+
+% \begin{table*}[htb]
+% \centering
+% \vspace{-4mm}
+% \small
+% \caption{Comprehensive comparison of task performance and cost between AdaInertia and baseline (average of multiple experiments)}
+% \begin{tabular}{lcccccc}
+% \toprule
+% \textbf{Base LLM \& Dataset} & \textbf{Method} & \textbf{SR} & \textbf{PR} & \textbf{Tokens} & \textbf{Savings} &\textbf{Time} \\
+% \midrule
+% \textbf{ScienceWorld} & & & & & \\
+% \midrule
+% \multirow{3}{*}{Qwen2.5-72B-Instruct} & ReAct & 79.6\% & 85.0\% & 5.66M & --- & 4.79h\\
+% & AutoTool & 51.8\% & 61.4\% & 3.42M & & 3.50h\\
+% & \textbf{AdaInertia} & \textsl{\textbf{81.1\%}} & \textsl{\textbf{85.4\%}} & \textsl{\textbf{4.03M}} & & \textsl{\textbf{2.00h}}\\
+% \midrule
+% \multirow{3}{*}{GPT-4o-mini} & ReAct & 64.4\% & 75.0\% & 7.73M & ---  & 1.55h\\
+% & AutoTool & 58.9\% & 73.8\% & 5.66M & & 1.49h\\
+% & \textbf{AdaInertia} & 61.8\% & 74.8\% & 5.15M & & 1.27h\\
+% \midrule
+% \multirow{3}{*}{DeepSeekV3.2} & ReAct & 50.0\% & 65.6\% & 12.23M & ---  & 4.45h\\
+% & AutoTool & 42.2\% & 50.3\% & 8.25M & & 3.22h\\
+% & \textbf{AdaInertia} & \textsl{\textbf{51.9\%}} & \textsl{\textbf{57.2\%}} & \textsl{\textbf{8.62M}} & & \textsl{\textbf{3.18h}}\\
+% \midrule
+% \textbf{Alfworld} & & & & & \\
+% \midrule
+% \multirow{3}{*}{Qwen2.5-72B-Instruct} & ReAct & 86.1\% & 86.1\% & 6.52M & ---  & 3.4h\\
+% & AutoTool & 57.2\% & 57.2\% & 4.10M & & 3.38h\\
+% & \textbf{AdaInertia} & 66.1\% & 66.2\% & 4.02M & & 2.17h\\
+% \midrule
+% \multirow{3}{*}{GPT-4o-mini} & ReAct & 57.1\% & 57.2\% & 17.00M & ---  & 5.08h\\
+% & AutoTool & 51.7\% & 52.7\% & 12.85M & & 3.84h\\
+% & \textbf{AdaInertia} & \textsl{\textbf{66.7\%}} & \textsl{\textbf{66.7\%}} & \textsl{\textbf{12.27M}} & & \textsl{\textbf{3.90h}}\\
+% \midrule
+% \multirow{3}{*}{DeepSeekV3.2} & ReAct & 87.8\% & 89.0\% & 9.83M & ---  & 2.11h\\
+% & AutoTool & 85.3\% & 85.5\% & 9.02M & & 2.92h\\
+% & \textbf{AdaInertia} & \textsl{\textbf{88.9\%}} & \textsl{\textbf{88.9\%}} & \textsl{\textbf{9.38M}} & & \textsl{\textbf{3.29h}}\\
+% \bottomrule
+% \end{tabular}
+% \label{table1}
+% \end{table*}
+
+\begin{table*}[htb]
+\vspace{-4mm}
+\centering
+\small
+\caption{Comprehensive comparison of task performance and cost between AdaInertia and baseline (average of multiple experiments). The \textbf{Savings} column represents the token reduction relative to the ReAct baseline.}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Base LLM \& Dataset} & \textbf{Method} & \textbf{SR} & \textbf{PR} & \textbf{Tokens} & \textbf{Savings(Ada)} & \textbf{Time} \\
+\midrule
+\textbf{ScienceWorld} & & & & & & \\
+\midrule
+\multirow{3}{*}{Qwen2.5-72B-Instruct} & ReAct & 79.6\% & 85.0\% & 5.66M & \multirow{3}{*}{\textsl{\textbf{28.8\%}}} & 4.79h\\
+& AutoTool & 51.8\% & 61.4\% & 3.42M &  & 3.50h\\
+& \textbf{AdaInertia} & \textsl{\textbf{81.7\%}} & \textsl{\textbf{85.5\%}} & \textsl{\textbf{4.03M}} &  & \textsl{\textbf{2.00h}}\\
+\midrule
+\multirow{3}{*}{GPT-4o-mini} & ReAct & 64.4\% & 75.0\% & 7.73M & \multirow{3}{*}{\textsl{\textbf{33.4\%}}} & 1.55h\\
+& AutoTool & 58.9\% & 73.8\% & 5.66M &  & 1.49h\\
+& \textbf{AdaInertia} & 61.8\% & 74.8\% & 5.15M &  & 1.27h\\
+\midrule
+\multirow{3}{*}{DeepSeekV3.2} & ReAct & 50.0\% & 65.6\% & 12.23M & \multirow{3}{*}{\textsl{\textbf{29.5\%}}} & 4.45h\\
+& AutoTool & 42.2\% & 50.3\% & 8.25M &  & 3.22h\\
+& \textbf{AdaInertia} & \textsl{\textbf{51.9\%}} & \textsl{\textbf{57.2\%}} & \textsl{\textbf{8.62M}} &  & \textsl{\textbf{3.18h}}\\
+\midrule
+\textbf{Alfworld} & & & & & & \\
+\midrule
+\multirow{3}{*}{Qwen2.5-72B-Instruct} & ReAct & 86.1\% & 86.1\% & 6.52M & \multirow{3}{*}{\textsl{\textbf{38.3\%}}} & 3.40h\\
+& AutoTool & 57.2\% & 57.2\% & 4.10M &  & 3.38h\\
+& \textbf{AdaInertia} & 66.1\% & 66.2\% & 4.02M &  & 2.17h\\
+\midrule
+\multirow{3}{*}{GPT-4o-mini} & ReAct & 57.1\% & 57.2\% & 17.00M & \multirow{3}{*}{\textsl{\textbf{27.8\%}}} & 5.08h\\
+& AutoTool & 51.7\% & 52.7\% & 12.85M &  & 3.84h\\
+& \textbf{AdaInertia} & \textsl{\textbf{66.7\%}} & \textsl{\textbf{66.7\%}} & \textsl{\textbf{12.27M}} &  & \textsl{\textbf{3.90h}}\\
+\midrule
+\multirow{3}{*}{DeepSeekV3.2} & ReAct & 87.8\% & 89.0\% & 9.83M & \multirow{3}{*}{\textsl{\textbf{4.6\%}}} & 2.11h\\
+& AutoTool & 85.3\% & 85.5\% & 9.02M &  & 2.92h\\
+& \textbf{AdaInertia} & \textsl{\textbf{88.9\%}} & \textsl{\textbf{88.9\%}} & \textsl{\textbf{9.38M}} &  & \textsl{\textbf{3.29h}}\\
+\bottomrule
+\end{tabular}
+\vspace{-2mm}
+\label{table1}
+\end{table*}
+Table~\ref{table1} (three synchronized runs per method; standard deviations 0.01--0.06) and Fig.~\ref{figure:Relative} detail the evaluation results and relative cost-performance trade-offs across benchmarks. Overall, AdaInertia overcomes the performance-cost trade-off inherent in traditional static tool caching via dynamic routing.
+
+As illustrated in Fig.~\ref{figure:Relative}, while AutoTool frequently falls into the negative trade-off region, AdaInertia consistently approaches or enters the Win-Win Zone. On ScienceWorld (GPT-4o-mini), token consumption drops by 33.4\% (7.73M$\rightarrow$5.15M) with negligible PR degradation (75.0\%$\rightarrow$74.8\%), whereas static AutoTool achieves only a 26.8\% saving at the cost of a steeper SR drop (64.4\%$\rightarrow$58.9\%). These gains stem from the A1 (bypass) and A2 (hint) mechanisms, which strip redundant reasoning and act as context denoisers to prevent attention degradation in long sequences.
+
+AdaInertia also shows robustness in fragile long-context settings. On AlfWorld (GPT-4o-mini), a clear win-win emerges: SR rises from 57.1\% to 66.7\% while tokens decrease from 17.00M to 12.27M ($-$27.8\%), whereas AutoTool lowers SR to 51.7\% for a smaller saving. On AlfWorld (Qwen2.5-72B), where AutoTool collapses SR by nearly 29 points (86.1\%$\rightarrow$57.2\%), AdaInertia limits the drop to 66.1\% at comparable token cost (4.02M). On AlfWorld (DeepSeek-V3.2), AdaInertia (88.9\%) even surpasses ReAct (87.8\%) while AutoTool degrades to 85.3\%. This validates the PDG and safety gating, which forces A0 re-planning to recover progress that cached inference cannot restore.
+
+Finally, system-level acceleration is most pronounced on ScienceWorld
+(Qwen2.5-72B), where execution time drops from 4.79 to 2.00 hours
+(2.4$\times$) while SR improves from 79.6\% to 81.7\%. This efficiency
+advantage holds broadly across memory- and routing-based alternatives
+(Appendix~\ref{appendix:routing}): AdaInertia outperforms Reflexion
+in SR (81.7\% vs.\ 78.9\%) with 63\% fewer tokens and less than half
+the wall-clock time (2.00h vs.\ 4.66h). SwiftSage achieves marginally
+higher SR (82.2\%) but at 61\% greater token cost and 37\% more time;
+RouteLLM, despite trimming context, still exceeds our token budget
+(4.40M vs.\ 4.03M) while trailing by 2.8 SR points on Hard tasks.
+AdaInertia thus achieves the best efficiency--performance balance
+among all routing methods.
+
+\begin{figure}[htb]
+	\centering
+	\includegraphics[width=0.9\linewidth]{images/pareto_frontier_updated_pr.pdf}
+    \caption{\textbf{Relative cost-performance trade-offs.}\\Metrics are normalized to the ReAct baseline (origin). Solid arrows illustrate AdaInertia recovering performance from AutoTool, shifting models toward Pareto optimal regions (top-left).}
+    \label{figure:Relative}
+\end{figure}
+\subsection{Ablation Study}
+\begin{table}[htb]
+    \centering
+    \footnotesize
+    \renewcommand{\arraystretch}{0.95}
+    \vspace{-2mm}
+    \caption{Ablation study of AdaInertia components on ScienceWorld (Model: Qwen2.5-72B-Instruct). $\triangle$: rule-based heuristic routing without RL training.}
+    \label{tab:table2}
+    \vspace{-1mm}
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{cccccccc}
+    \toprule
+    \textbf{Variant} & \makecell{Online\\Update} & \makecell{Asym.\\Reward} & \textbf{PDG} & \makecell{Overall\\SR} & \makecell{Easy\\SR} & \makecell{Hard\\SR} & \makecell{Overall\\PR} \\
+    \midrule
+    B1 (Frozen DQN)  & $\times$ & $\times$ & $\checkmark$ & 41.1\% & 30.4\% & 30.4\% & 56.0\%\\
+    B2 (Sym. Reward) & $\checkmark$ & \makecell{$\times$\\(Sym.)} & $\checkmark$ & 46.7\% & 55.9\% & 41.1\% & 58.9\%\\
+    B3 (w/o PDG)     & $\checkmark$ & $\checkmark$ & $\times$ & 47.8\% & 55.9\% & 42.9\% & 58.8\%\\
+    Rule-Based       & $\triangle$ & $\times$ & $\checkmark$ & 71.1\% & 91.2\% & 58.9\% & 78.7\%\\
+    Ours (AdaInertia)& $\checkmark$ & $\checkmark$ & $\checkmark$ & \textbf{81.1\%} & \textbf{88.2\%} & \textbf{76.8\%} & \textbf{85.4\%}\\
+    \bottomrule
+    \end{tabular}
+    \vspace{-4mm}
+\end{table}
+We evaluate the contribution of core components on ScienceWorld using Qwen2.5-72B-Instruct (Table~\ref{tab:table2}). Disabling \textbf{online RL updates (B1)} keeps SR stagnant at 41.1\%, as the frozen DQN cannot adapt its routing policy to task difficulty. \textbf{Symmetric rewards (B2)} lead to indecision between savings and performance (SR 46.7\%). Without the \textbf{Progress-Driven Graph (PDG, B3)}, the system loses phase-awareness, dropping SR to 47.8\%. We further include a \textbf{Rule-Based} variant that replaces the learned policy with hand-crafted heuristics while retaining PDG and safety gating. Despite outperforming the frozen DQN (71.1\% vs.\ 41.1\%), it still trails AdaInertia by 10 points on Overall SR and 17.9 points on Hard SR, confirming that RL-based adaptive routing is necessary for navigating non-linear task difficulty. In contrast, AdaInertia's asymmetric penalties effectively reshape meta-cognition: providing reuse incentives for predictable steps while penalizing premature truncation in complex states, achieving 88.2\% Easy SR and 76.8\% Hard SR.
+
+\subsection{Analysis of Reward Design}
+We analyze the meta-controller's evolution across three reward formulations on ScienceWorld (GPT-4o-mini, Fig. \ref{figure:Impact of reward}) to verify the necessity of Token-Aware RL (V3).
+
+\begin{itemize}
+    \item \textbf{V1 \& V2: From Policy Degradation to Conservative Shift.} The initial \textbf{V1 (Naive RL)} uses static state representations without environmental awareness, leading to an unstable policy distribution. This causes disproportionately high single-step costs and low success rates (67.7\% Easy, 51.8\% Hard). \textbf{V2 (State-Corrected RL)} introduces the Progress Rate to correct the MDP state. While this stabilizes the learning, it triggers a highly conservative policy: $A_0$ calls rise to 58\%, while $A_2$ calls decrease to 13\%. This heavy reliance on $A_0$ drives token consumption to a peak of 6.17M, negating the cost-saving benefits of tool caching.
+
+    \item \textbf{V3: Token-Aware RL and Optimal Cost-Performance Trade-off.} To optimize the performance-cost trade-off, V3 (AdaInertia) introduces an asymmetric reward mechanism (+1.5 for $A_1$/$A_2$, -0.3 for $A_0$), combined with stepwise linear token penalties and memory window truncation (Max Size 25). Experiments show this mechanism successfully guides the policy, achieving optimal Cost-Performance trade-off between forced reasoning ($A_0$: 38\%) and hint enhancement ($A_2$: 48\%). Consequently, V3 compresses total token consumption to 5.15M (a 16.5\% reduction from V2) and lowers single-call overhead to 4,110 tokens, while improving the Easy task success rate to 88.2\%.
+\end{itemize}
+
+\begin{figure}[htb]
+	\centering
+	\includegraphics[width=\linewidth]{images/5.3.pdf}
+    \caption{\textbf{Impact of reward formulations on routing policies and task performance.} By transitioning from naive RL to Token-Aware RL, AdaInertia achieves a Pareto equilibrium between forced reasoning (A0) and aggressive inertia (A2), significantly reducing token costs without sacrificing the success rate.}
+    \label{figure:Impact of reward}
+\end{figure}
+
+\subsection{Behavioral Analysis of the Meta-Controller}
+Visualization (Fig. \ref{figure:Learning curves}) demonstrates that the meta-controller learns heterogeneous routing strategies tailored to specific LLMs and environmental complexities.
+
+\textbf{Model-Aware Differentiation}: For Qwen2.5-72B on ScienceWorld (Fig \ref{figure:Learning curves}a), the controller converges to an A0-dominant strategy (∼89\% full LLM reasoning), with a low, stable inertia ratio of ∼11\%. This reflects that Qwen's superior reasoning capacity rarely yields high-confidence tool predictions in ScienceWorld's complex state space, and forcing full reasoning preserves the high SR. In contrast, for GPT-4o-mini (Fig. \ref{figure:Learning curves}b–c), the inertia ratio rises substantially (∼36--44\%), exploiting the model's more predictable tool-following patterns to skip redundant reasoning.
+
+\textbf{Environment-Driven Adaptation}: On ScienceWorld (GPT-4o-mini, Fig. \ref{figure:Learning curves}b), inertia grows gradually from near zero, co-evolving with SR improvement — the agent incrementally learns which subtasks admit safe bypassing. On AlfWorld (Fig. \ref{figure:Learning curves}c), the structured action space enables high-confidence predictions from the outset, producing a higher and more immediately stable inertia ratio (∼44\%). The oscillations during early episodes reflect active exploration of the bypass threshold, while rapid post-convergence stability confirms that the PDG accurately captures AlfWorld's task regularities.
+
+\begin{figure}[htb]
+	\centering
+	\includegraphics[width=\linewidth]{images/rl_learning_curves.pdf}
+	\caption{\textbf{Learning curves of the RL meta-controller.} The meta-controller learns model- and environment-aware routing: Qwen2.5-72B converges to full LLM reasoning (A0, ∼89\%) on complex ScienceWorld tasks, while GPT-4o-mini adopts substantial inertia-based bypassing (A1+A2: ∼36\% on ScienceWorld, ∼44\% on AlfWorld), demonstrating adaptive specialization without manual tuning.}
+    \label{figure:Learning curves}
+\end{figure}
+\subsection{Inference Overhead}
+To evaluate AdaInertia's time efficiency, we perform a component-level breakdown of the micro-time consumption of single-step decision-making, using the median to exclude the influence of long-tail network jitter. As shown in Table \ref{tab:table3}, the micro-latency analysis confirms that AdaInertia introduces negligible overhead: the lightweight DQN requires only 0.24 ms per forward pass (state extraction and action sampling), compared to 2389 ms for standard LLM API calls. This <0.1\% overhead confirms AdaInertia's viability for accelerating real-time agent deployments without latency penalties.
+
+\begin{table}[htb]
+    \centering
+    \small
+    \caption{Micro-latency breakdown per step type (Log Scale)}
+    \label{tab:table3}
+    \begin{tabular}{|c|c|c|}
+    \hline
+    Component & Mean & Median\\
+    \hline
+    LLM API call & 2628ms & 2389ms\\
+    \hline
+    RL overhead per LLM-step (excluding initial load) & 2.69ms & 0.24ms\\
+    \hline
+    Inertia step (No LLM, full process) & 12.4ms & 12.3ms\\
+    \hline
+    RL overhead / LLM call ratio & — & 0.10\%\\
+    \hline
+    \end{tabular}
+\end{table}
+\section{Conclusion}
+This paper proposes AdaInertia, a reinforcement learning-based dynamic compute scheduling framework that formulates tool usage inertia control in LLM agents as a Markov Decision Process. By introducing a lightweight DQN meta-controller, progress-driven state representations, and an asymmetric cost-aware reward mechanism, AdaInertia overcomes the inability of static inertia strategies to adapt to dynamic task difficulties and specific model capabilities. Extensive experiments on the ScienceWorld and AlfWorld benchmarks demonstrate that AdaInertia achieves significant Pareto improvements across multiple LLMs (GPT-4o-mini, Qwen2.5-72B, DeepSeek-V3.2). It effectively recovers performance where static mechanisms fail and maximizes token reduction during predictable phases. Ablation studies confirm the necessity of its core components: safety gating, the progress-driven graph, and asymmetric rewards. Furthermore, the meta-controller learns heterogeneous routing strategies tailored to different LLMs — favoring conservative inertia for models prone to hallucination and hint enhancement for strong instruction-following models. This emergent behavior provides a novel perspective for optimizing the reasoning efficiency of autonomous agents.
+
+\begin{thebibliography}{99}
+
+\bibitem{gpt4}
+OpenAI: GPT-4 technical report. arXiv preprint \href{https://arxiv.org/abs/2303.08774}{arXiv:2303.08774} (2023)
+
+\bibitem{llama2}
+Touvron, H., Martin, L., Stone, K., et al.: Llama 2: open foundation and fine-tuned chat models. arXiv preprint \href{https://arxiv.org/abs/2307.09288}{arXiv:2307.09288} (2023)
+
+\bibitem{autogpt}
+Richards, T.: Auto-GPT: an autonomous GPT-4 experiment. GitHub repository (2023). \url{https://github.com/Significant-Gravitas/AutoGPT}
+
+\bibitem{agentbench}
+Liu, X., Yu, H., Zhang, H., et al.: AgentBench: evaluating LLMs as agents. In: ICLR (2024)
+
+\bibitem{react}
+Yao, S., Zhao, J., Yu, D., et al.: ReAct: synergizing reasoning and acting in language models. In: ICLR (2023)
+
+\bibitem{reflexion}
+Shinn, N., Cassano, F., Berman, E., et al.: Reflexion: language agents with verbal reinforcement learning. In: NeurIPS (2023)
+
+\bibitem{mind2web}
+Deng, X., Gu, Y., Zheng, B., et al.: Mind2Web: towards a generalist agent for the web. In: NeurIPS (2023)
+
+\bibitem{toolllm}
+Qin, Y., Liang, S., Ye, Y., et al.: ToolLLM: facilitating large language models to master 16000+ real-world APIs. In: ICLR (2024)
+
+\bibitem{fireact}
+Chen, B., Shu, C., Shareghi, E., et al.: FireAct: toward language agent fine-tuning. In: Findings of the ACL: EMNLP 2024. pp. 2124--2141. ACL (2024)
+
+\bibitem{swiftsage}
+Lin, B.Y., Fu, Y., Yang, K., et al.: SwiftSage: a generative agent with fast and slow thinking for complex interactive tasks. In: NeurIPS (2023)
+
+\bibitem{gorilla}
+Patil, S.G., Zhang, T., Wang, X., et al.: Gorilla: large language model connected with massive APIs. In: NeurIPS pp. 126544--126565. (2024)
+
+\bibitem{chameleon}
+Lu, P., Peng, B., Cheng, H., et al.: Chameleon: plug-and-play compositional reasoning with large language models. In: NeurIPS (2023)
+
+\bibitem{autotool}
+Jia, J., Li, Q.: AutoTool: efficient tool selection for large language model agents. In: AAAI (2026)
+
+\bibitem{dqn}
+Mnih, V., Kavukcuoglu, K., Silver, D., et al.: Human-level control through deep reinforcement learning. Nature \textbf{518}(7540), 529--533 (2015)
+
+\bibitem{deepseekr1}
+DeepSeek-AI: DeepSeek-R1: incentivizing reasoning capability in LLMs via reinforcement learning. Nature \textbf{645}(8081), 633--638 (2025)
+
+\bibitem{llama3}
+Grattafiori, A., Dubey, A., Jauhri, A., et al.: The Llama 3 herd of models. arXiv preprint \href{https://arxiv.org/abs/2407.21783}{arXiv:2407.21783} (2024)
+
+\bibitem{sweagent}
+Yang, J., Jimenez, C.E., Wettig, A., et al.: SWE-agent: agent-computer interfaces enable automated software engineering. In: NeurIPS (2024)
+
+\bibitem{openhands}
+Wang, X., Li, B., Song, Y., et al.: OpenHands: an open platform for AI software developers as generalist agents. In:  ICLR (2025)
+
+\bibitem{devin}
+Cognition AI: Introducing Devin, the first AI software engineer. Blog post (2024). \url{https://www.cognition.ai/blog/introducing-devin}
+
+\bibitem{agentboard}
+Ma, C., Zhang, J., Zhu, Z., et al.: AgentBoard: an analytical evaluation board of multi-turn LLM agents. In: NeurIPS (Datasets and Benchmarks Track). (2024)
+
+\bibitem{gaia}
+Mialon, G., Fourrier, C., Swift, C., et al.: GAIA: a benchmark for general AI assistants. In:  ICLR (2024)
+
+\bibitem{toolformer}
+Schick, T., Dwivedi-Yu, J., Dessì, R., et al.: Toolformer: language models can teach themselves to use tools. In: NeurIPS (2023)
+
+\bibitem{toolnet}
+Liu, X., Peng, Z., Yi, X., et al.: ToolNet: connecting large language models with massive tools via tool graph. In: AAAI. pp. 18030--18038. AAAI Press (2024)
+
+\bibitem{llmcompiler}
+Kim, S., Moon, S., Tabrizi, R., et al.: An LLM compiler for parallel function calling. In: ICML. pp. 24370--24391. PMLR (2024)
+
+\bibitem{deepseekmath}
+Shao, Z., Wang, P., Zhu, Q., et al.: DeepSeekMath: pushing the limits of mathematical reasoning in open language models. arXiv preprint \href{https://arxiv.org/abs/2402.03300}{arXiv:2402.03300} (2024)
+
+\bibitem{routellm}
+Ong, I., Almahairi, A., Wu, V., et al.: RouteLLM: learning to route LLMs with RL. In:  ICLR (2025)
+
+\bibitem{hybrid}
+Ding, D., Mallick, A., Wang, C., et al.: Hybrid LLM: cost-efficient and quality-aware inference. In:  ICLR (2024)
+
+\bibitem{agentflan}
+Chen, Z., Liu, K., Wang, Q., et al.: Agent-FLAN: designing data and methods of effective agent tuning for large language models. In: Findings of the ACL: ACL 2024. pp. 9354--9366. ACL (2024)
+
+\bibitem{alfworld}
+Shridhar, M., Yuan, X., Côté, M.A., et al.: ALFWorld: aligning text and embodied environments for interactive learning. In:  ICLR (2021)
+
+\bibitem{scienceworld}
+Wang, R., Jansen, P., Côté, M.A., et al.: ScienceWorld: is your agent smarter than a 5th grader? In: EMNLP. pp. 11279--11298. ACL (2022)
+
+\end{thebibliography}
+\clearpage
+\appendix
+\section{Appendix: Technical Realization and Logic}
+\label{appendix:details}
+
+This appendix provides the technical specifics for the implementation of AdaInertia. We detail the hierarchical decision logic and the verbatim Python implementation of the core meta-control loop. To maintain the \textbf{double-blind review process}, identifying repository links and metadata have been replaced with anonymous descriptors.
+
+\subsection{Formal Algorithm Logic}
+Algorithm~\ref{alg:appendix_adainertia} formalizes the complete execution flow of the AdaInertia framework. It illustrates the interaction between the RL meta-controller $Q_{\phi}$ and the underlying tool-usage inertia mechanism, highlighting the tiered strategy selection ($A_0, A_1, A_2$) and the online update process.
+
+
+\begin{algorithm}[H]
+\caption{AdaInertia: Dynamic Adaptive Routing via RL Meta-Controller}
+\label{alg:appendix_adainertia}
+\scriptsize 
+\LinesNumbered
+\KwIn{Goal $g$, Environment Env, Max Memory $M$, RL Meta-Controller $Q_{\phi}$}
+\KwOut{Task completion trajectory $\tau$}
+\SetKwFunction{FExtractState}{ExtractState}
+\SetKwFunction{FUpdateRL}{UpdateQNetwork}
+\SetKwFunction{FGetTool}{RetrieveCachedTool}
+Initialize: obs $\leftarrow$ Env.reset($g$), history $\mathcal{H} \leftarrow \emptyset$, $\tau \leftarrow \emptyset$\;
+Progress Tracker $\mathcal{P} \leftarrow 0$, $t \leftarrow 0$\;
+\While{$t < T_{max}$ \textbf{and not} done}{
+    \tcp{Phase 1: State Extraction \& Progress Perception}
+    $\Delta p \leftarrow$ Env.GetProgress(obs) - $\mathcal{P}$ \tcp*{Progress Delta}
+    $\mathcal{P} \leftarrow$ Env.GetProgress(obs)\;
+    $s_t \leftarrow \FExtractState(\mathcal{H}, \text{obs}, \Delta p)$ \tcp*{State Repr.}
+    \tcp{Phase 2: RL-based Routing Decision (A0/A1/A2)}
+    \uIf{\text{SafetyGating}($s_t$) = \textbf{True} \textbf{or} Env.IsFailure(obs)}{
+        action $\leftarrow$ A0 \tcp*{Safety fallback}
+    }\Else{
+        action $\leftarrow \arg\max_{a \in \{A0, A1, A2\}} Q_{\phi}(s_t, a)$ \tcp*{$\epsilon$-greedy}
+    }
+    \tcp{Phase 3: Execution via Routed Strategy}
+    \uIf{action = A0}{
+        \tcp{Force LLM Reasoning}
+        prompt $\leftarrow$ ConstructPrompt($g$, $\mathcal{H}$, obs)\;
+        $tool\_call \leftarrow \text{LLM}(\text{prompt})$\;
+    }\uElseIf{action = A1}{
+        \tcp{Conservative Inertia (Verify with Env)}
+        $tool\_call \leftarrow \FGetTool(\mathcal{H})$\;
+        $tool\_call \leftarrow \text{ValidateParams}(tool\_call, \text{obs})$\;
+    }\Else{
+        \tcp{action = A2: Aggressive Inertia (Truncate Memory)}
+        $tool\_call \leftarrow \FGetTool(\mathcal{H})$\;
+        $\mathcal{H} \leftarrow \text{Truncate}(\mathcal{H}, \text{window}=M)$ \tcp*{Context Compression}
+    }
+    \tcp{Phase 4: Environmental Step \& Reward Formulation}
+    next\_obs, done $\leftarrow$ Env.step($tool\_call$)\;
+    \tcp{Asymmetric Reward Calculation}
+    \uIf{success(next\_obs)}{
+        $r_t \leftarrow$ BaseReward + (1.5 \textbf{if} action=A2 \textbf{else} 1.0)\;
+    }\Else{
+        $r_t \leftarrow$ BasePenalty - (0.3 \textbf{if} action=A0 \textbf{else} 0.8)\;
+    }
+    $r_t \leftarrow r_t - \lambda \cdot \text{TokenCost}(tool\_call)$ \tcp*{Token Penalty}
+    \tcp{Phase 5: Online RL Update \& Record}
+    $\FUpdateRL(s_t, \text{action}, r_t, s_{t+1})$ \tcp*{DQN Update}
+    $\tau.\text{append}(\langle tool\_call, \text{next\_obs}, \text{action} \rangle)$\;
+    $\mathcal{H}.\text{append}(tool\_call)$; $t \leftarrow t + 1$\;
+}
+\Return $\tau$
+\end{algorithm}
+
+\noindent
+For example, when the predicted tool is \texttt{go\_to} but the destination parameter cannot be resolved, the LLM receives:
+\begin{quote}
+\texttt{\textless InertialAction\textgreater Inertial action: go\_to with params: \{'location': ''\}\textless /InertialAction\textgreater}
+\end{quote}
+The LLM thus knows \emph{which} tool to call and only needs to supply the missing argument, reducing the reasoning burden.
+
+\paragraph{Inertia window vs.\ LLM context.}
+AdaInertia maintains two separate data structures with different truncation policies. The \emph{inertia window} is a fixed-size sliding window (\texttt{deque(maxlen=k+2)}) that records the most recent $k{+}2$ tool invocations and is used solely for tool-type prediction via SimCSE similarity matching. By contrast, the \emph{episode memory} (TemporaryMemory) retains the \emph{complete} conversation history without truncation; the LLM always receives the full context. This design ensures that the lightweight prediction mechanism operates over a compact, recency-biased view, while the LLM retains global episode context for accurate reasoning.
+
+\paragraph{PDG vs.\ basic tool graph.}
+The basic \emph{ToolGraph} records tool invocation sequences (e.g., \texttt{search\_item} $\to$ \texttt{click\_item} $\to$ \texttt{buy\_item}) with edge counts and supports next-tool-type prediction. However, it carries no information about \emph{parameter values}.
+
+The \emph{Parameter Dependency Graph} (PDG) additionally tracks cross-tool parameter flows:
+\[
+  \texttt{search\_item.result[0]} \;\longrightarrow\; \texttt{click\_item.item\_id}
+\]
+At fill time, PDG performs a history lookup:
+\begin{lstlisting}[basicstyle=\small\ttfamily, frame=single]
+# PDG fill succeeds  ->  A1 (LLM skipped)
+PDG Fill: 'item_id' <- 'search_item.result[0]'
+
+# PDG fill fails  ->  A2 (hint + LLM)
+[potential_sources]: []
+\end{lstlisting}
+In effect, the ToolGraph answers \emph{``what tool comes next?''} while PDG answers \emph{``what value should that tool's parameter take?''}\ Together they enable A1 to bypass the LLM entirely for routine, parameter-predictable steps.
+
+
+\subsection{Verbatim Python Implementation}
+The following snippet provides the verbatim Python realization of the meta-control loop. This code covers the state mapping, action-to-threshold conversion, and the online training logic using the asymmetric reward formulation.
+
+\begin{lstlisting}[style=lncs,
+  caption={AdaInertia core implementation (condensed).},
+  label={lst:adainertia}][htb]
+# --- SimpleQNet & DQN update (rl_module_v2.py) ---
+class SimpleQNet(nn.Module):           # 2-hidden-layer Q-network
+    def __init__(self, state_dim, action_dim):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(state_dim, 64), nn.ReLU(),
+            nn.Linear(64, 64),        nn.ReLU(),
+            nn.Linear(64, action_dim))
+    def forward(self, x): return self.fc(x)
+def learn(self):                       # Phase 5: online DQN update
+    if len(self.memory) < self.batch_size: return
+    s, a, r, s_, done = zip(*random.sample(self.memory, self.batch_size))
+    s, a, r, s_, done = (torch.FloatTensor(np.array(s)).to(self.device),
+        torch.LongTensor(a).unsqueeze(1).to(self.device),
+        torch.FloatTensor(r).unsqueeze(1).to(self.device),
+        torch.FloatTensor(np.array(s_)).to(self.device),
+        torch.FloatTensor(np.float32(done)).unsqueeze(1).to(self.device))
+    q_eval = self.q_net(s).gather(1, a)
+    with torch.no_grad():
+        q_target = r + self.gamma * self.q_net(s_).max(1)[0].view(-1,1) * (1-done)
+    loss = self.loss_func(q_eval, q_target)
+    self.optimizer.zero_grad(); loss.backward(); self.optimizer.step()
+    if self.epsilon > self.epsilon_min:  # epsilon annealing
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+# --- Adaptive routing loop (alfworld_rl_v2.py, evaluate_env) ---
+for i in range(self.max_num_steps):
+    # Phase 1: state extraction  s_t = [f_prog, f_iner, f_step, f_eff]
+    inertia_ratio = inertia_calls / max(i, 1) if i > 0 else 0.0
+    token_eff     = max(0.0, 1.0 - avg_tokens / 4000.0)
+    curr_state    = np.array([last_reward, inertia_ratio,
+                               i / max(self.max_num_steps-1, 1), token_eff])
+    # Phase 2: routing decision  a_t in {A0, A1, A2}
+    rl_action = _global_rl_agent_v2.choose_action(curr_state)
+    self.agent.inertia_threshold = {0: 1.5, 1: 0.6, 2: 0.1}[rl_action]
+    # Phase 3: strategy-driven execution
+    success, action = self.agent.run(init_prompt_dict=init_prompt_dict)
+    if not success:
+        _global_rl_agent_v2.store_transition(curr_state, rl_action, -1.0, curr_state, True)
+        _global_rl_agent_v2.learn(); break
+    observation, reward, done, _ = self.env.step(self.parseAction(action))
+    # Phase 4: asymmetric reward  r_t
+    progress_delta = reward - last_reward
+    rl_r = (10.0 if done else progress_delta * 5.0 if progress_delta > 0 else -0.1)
+    if step_tokens > 2000: rl_r -= (step_tokens - 2000) / 20000.0  # token penalty
+    # Phase 5: store & update
+    next_state = np.array([reward, inertia_calls/max(i+1,1),
+                            i/max(self.max_num_steps-1,1), token_eff])
+    _global_rl_agent_v2.store_transition(curr_state, rl_action, rl_r, next_state, done)
+    _global_rl_agent_v2.learn()
+    last_reward = reward;  self.agent.update(action=action, state=observation)
+    if done: return 1.0, True
+\end{lstlisting}
+
+\section{Appendix: Comparison with Routing Baselines}
+\label{appendix:routing}
+
+This section compares AdaInertia against representative memory-intensive (Reflexion) and routing-based (SwiftSage, RouteLLM) baselines to verify its Pareto efficiency.
+
+\begin{table}[H]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{0.95}
+    \vspace{-2mm}
+    \caption{Comparison of AdaInertia against memory- and routing-based baselines on ScienceWorld (Qwen2.5-72B-Instruct). SwiftSage routes between full- and trimmed-context calls on stall detection; RouteLLM routes by observation-length complexity. Token estimates for SwiftSage include 13 resumed examples extrapolated from per-example averages.}
+    \label{tab:routing_baselines}
+    \vspace{-1mm}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Method} & \textbf{SR} & \textbf{PR} & \textbf{Tokens} & \textbf{Time} \\
+    \midrule
+    ReAct      & 79.6\% & 85.0\% & 5.66M  & 4.79h \\
+    Reflexion  & 78.9\% & 83.9\% & 10.86M & 4.66h \\
+    SwiftSage  & 82.2\% & 89.0\% & 6.49M  & 2.74h \\
+    RouteLLM   & 78.9\% & 85.1\% & 4.40M  & 2.34h \\
+    AutoTool   & 51.8\% & 61.4\% & 3.42M  & 3.50h \\
+    \textbf{AdaInertia} & \textsl{\textbf{81.7\%}} & \textsl{\textbf{85.5\%}} & \textsl{\textbf{4.03M}} & \textsl{\textbf{2.00h}} \\
+    \bottomrule
+    \end{tabular}
+    \vspace{-3mm}
+\end{table}
+
+
+\end{document}
