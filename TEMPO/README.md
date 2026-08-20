@@ -152,3 +152,8 @@ python agentboard/eval_main.py \
 
 - Usually indicates container memory pressure.
 - Run one job at a time and reduce concurrent workloads.
+
+## Authors
+- [Yanxi Hu](https://github.com/Hlllime)
+- Yanjie Zhao
+- Jingyi Jia
